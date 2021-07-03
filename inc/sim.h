@@ -8,6 +8,28 @@ typedef enum
   SIM_TIME_OUT = 1  
 }SIM_STATUS;
 
+typedef enum
+{
+  CALL_OK        = 0,
+  CME_ERROR,
+  NO_DIALTONE,
+  BUSY,
+  NO_CARRIER,
+  NO_ANSWER,
+  CONNECT,
+}CALL_STATUS;
+
+typedef struct
+{
+    char PhoneNumber[15];
+}SIM_PHONE_NUMBER;
+
+typedef struct
+{
+    uint8_t Flags;
+    SIM_PHONE_NUMBER Phone;   
+}MASTER_PHONE_NUMBER;
+
 #define SIM_SIZE_BUFFER          10
 #define SIM_SIZE_OF_DATA_BUFFER  100
 #define SIM_BUF_PK_VALID         0x01
@@ -17,8 +39,10 @@ typedef struct
 {
   void (*SIM_Sendchar)(char);
   void (*SIM_SendString)(char*);
-  void (*SIM_Delay)(uint16_t);
+  void (*SIM_Delay)(uint32_t);
 }SIM_FUNCTION;
+extern SIM_FUNCTION SIM_Function;
+
 typedef struct
 {
     uint8_t Flags;
@@ -59,7 +83,40 @@ typedef struct
 #define SIM_SEND_SMS_OK                0x08
 
 
+/*vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+  =============================== Xử Lý Cờ Của SIM ===============================
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
+SIM_FLAGS SIM_GetFlags(SIM_FLAGS _flags);
+void SIM_SetFlags(SIM_FLAGS _flags);
+void SIM_ClearFlags(SIM_FLAGS _flags);
+/*vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+  ========================= Xử Lý Chuỗi Trong Gói Tin =============================
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
+char* SearchArrayInArray(char* _string_source,char* _string_search,uint8_t _time, uint16_t _length);
+char* SearchByteInArray(char CharNeedSerach, char *_string_search,uint8_t TimeAppear,uint8_t MaxLenghtBuffer);
+/*vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+  ========================== Xử Lý Dữ Liệu Nhận Từ SIM ============================
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
+void SIM_InByte (uint8_t _byte);
+void SIM_InBuffer (uint8_t* _buffer,uint16_t Leng);
+void SIM_NextBuffer (void);
 void SIM_ReceiveData (uint8_t _byte);
+void SIM_ReceiveDMA (uint8_t* _buffer,uint16_t Leng);
+SIM_STATUS SIM_WaitForRespond(char *Respond,uint16_t _time_wait);
+void SIM_ResetBuffer(SIM_BUFFER* _buffer);
+void SIM_DetectPacket(void);
+void SIM_SendCommand(char *Command);
 void SIM_ProcessNewPacket(SIM_BUFFER *_buffer);
+
+/*vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+  ====================== Tập Lệnh Điều Khiển SIM Qua AT Command ===================
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
+SIM_STATUS SIM_Call(uint8_t *PhoneNumber,uint32_t _timeout);
+void SIM_HangUpCall(void);
+SIM_STATUS SIM_SendMessages(char *PhoneNumber, char *Messages,uint32_t _timeout);
+SIM_STATUS SIM_ReadMessages(uint8_t IndexInBufferSim,uint32_t _timeout);
+SIM_STATUS SIM900_DeleteMessages(uint8_t IndexInBufferSim,uint32_t _timeout);
+uint8_t SIM_GetSenderNumber(SIM_BUFFER* _buffer,SIM_PHONE_NUMBER*_sender_number);
+uint8_t SIM_GetContent(SIM_BUFFER* _buffer,char* _content);
 #endif
 
