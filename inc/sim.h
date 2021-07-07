@@ -19,6 +19,7 @@ typedef enum
   CONNECT,
 }CALL_STATUS;
 
+
 typedef struct
 {
     char PhoneNumber[15];
@@ -29,6 +30,10 @@ typedef struct
     uint8_t Flags;
     SIM_PHONE_NUMBER Phone;   
 }MASTER_PHONE_NUMBER;
+
+
+
+
 
 #define SIM_SIZE_BUFFER          10
 #define SIM_SIZE_OF_DATA_BUFFER  100
@@ -93,7 +98,7 @@ void SIM_ClearFlags(SIM_FLAGS _flags);
   ========================= Xử Lý Chuỗi Trong Gói Tin =============================
   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
 char* SearchArrayInArray(char* _string_source,char* _string_search,uint8_t _time, uint16_t _length);
-char* SearchByteInArray(char CharNeedSerach, char *_string_search,uint8_t TimeAppear,uint8_t MaxLenghtBuffer);
+uint8_t SearchByteInArray(char CharNeedSerach, char *_string_search,uint8_t TimeAppear,uint8_t MaxLenghtBuffer);
 /*vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
   ========================== Xử Lý Dữ Liệu Nhận Từ SIM ============================
   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
@@ -118,5 +123,12 @@ SIM_STATUS SIM_ReadMessages(uint8_t IndexInBufferSim,uint32_t _timeout);
 SIM_STATUS SIM900_DeleteMessages(uint8_t IndexInBufferSim,uint32_t _timeout);
 uint8_t SIM_GetSenderNumber(SIM_BUFFER* _buffer,SIM_PHONE_NUMBER*_sender_number);
 uint8_t SIM_GetContent(SIM_BUFFER* _buffer,char* _content);
+SIM_STATUS SIM_QuerySignalQuality(uint8_t* rssi,uint8_t* ber,uint32_t _timeout);
+SIM_STATUS SIM_NetworkResistration(uint8_t* _value,uint8_t* _sta_,uint32_t _timeout);
+/*vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
+  ====================== Cấu Hình SIM Theo Ứng Dụng Cụ Thể ===================
+  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
+
+SIM_STATUS SIM_InitBasic(uint32_t _timeout);
 #endif
 
