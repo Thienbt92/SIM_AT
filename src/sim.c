@@ -8,6 +8,7 @@ Ngay Thang: 01/07/2021
 
 SIM_BUFFER SimBuffer[SIM_SIZE_BUFFER];
 FLAG_SIM_PACKET Flag_SimPacket;
+FLAG_SIM_START Flag_SimStart;
 SIM_FUNCTION SIM_Function;
 volatile uint8_t SIM_IndexBuffer = 0,CurrentIndexBuffer=0;
 volatile SIM_FLAGS SIM_FlagsStatus = 0;
@@ -63,26 +64,28 @@ void SIM_ClearFlags(SIM_FLAGS _flags)
 ********************************************************************************/
 char* SearchArrayInArray(char* _string_source,char* _string_search,uint8_t _time, uint16_t _length)
 {
-        uint16_t IndexSource=0,IndexSearch=0;
-        while(IndexSource<_length)
-        {
-            if(_string_source[IndexSource++]!=_string_search[IndexSearch++])
-            {
-                IndexSearch = 0;
-                if(_string_search[IndexSearch]==_string_source[IndexSource-1])
-                    IndexSearch++;
-            }
-            if(_string_search[IndexSearch]==0)
-            {
-                if(--_time!=0)
-                {
-                    IndexSearch = 0;
-                    continue;
-                }
-                return &_string_source[IndexSource-IndexSearch];
-            } 
-        }
-     return NULL;
+  if((_string_source==NULL)||(_string_search==NULL))
+    return NULL;
+  uint16_t IndexSource=0,IndexSearch=0;
+  while(IndexSource<_length)
+  {
+      if(_string_source[IndexSource++]!=_string_search[IndexSearch++])
+      {
+          IndexSearch = 0;
+          if(_string_search[IndexSearch]==_string_source[IndexSource-1])
+              IndexSearch++;
+      }
+      if(_string_search[IndexSearch]==0)
+      {
+          if(--_time!=0)
+          {
+              IndexSearch = 0;
+              continue;
+          }
+          return &_string_source[IndexSource-IndexSearch];
+      } 
+  }
+  return NULL;
 }
 /************************************************************************************
  * Tìm 1 ký tự trong chuỗi nguồn.
@@ -149,11 +152,11 @@ void SIM_NextBuffer (void)
 /*
   Phát hiện kết thúc chuỗi dữ liệu
 */
-//uint8_t _buf_test[50];
-//uint8_t __i=0;
+uint8_t _buf_test[100];
+uint8_t __i=0;
 void SIM_ReceiveData (uint8_t _byte)
 {
-  //_buf_test[__i++] = _byte;
+  _buf_test[__i++] = _byte;
   if(_byte == 0x0D)
   {
     if(SimBuffer[SIM_IndexBuffer].IndexByteInBuffer!=0)
@@ -169,11 +172,12 @@ void SIM_ReceiveData (uint8_t _byte)
     if(Flag_SimPacket.BIT._Flag_Detect_End_Packet!=0)
     {
       Flag_SimPacket.BIT._Flag_Detect_End_Packet=0;
+      SIM_InByte(_byte);
       SIM_NextBuffer();
+      return;
     }
   }
-  else
-    SIM_InByte(_byte);
+  SIM_InByte(_byte);
 }
 /*
   * Nhận dữ liệu RX bằng DMA (Hỗ chợ 1 số dòng chip có chế độ IDLE hoặc DMA)
@@ -194,9 +198,9 @@ SIM_STATUS SIM_WaitForRespond(char *Respond,uint16_t _time_wait)
 {
     uint16_t TimeWait = 0;
     uint8_t i;  
-    while((++TimeWait<_time_wait))
+    //while((++TimeWait<_time_wait))
     {
-        SIM_Function.SIM_Delay(1);
+        //SIM_Function.SIM_Delay(1);
         for(i=0;i<SIM_SIZE_BUFFER;i++)
         {
           if((SimBuffer[i].Flags&SIM_BUF_PK_VALID)!=0)
@@ -221,19 +225,34 @@ void SIM_ResetBuffer(SIM_BUFFER* _buffer)
       _buffer->Buffer[i] = 0;
   _buffer->Flags = _buffer->IndexByteInBuffer =0;
 }
+/*
+  Xóa toàn bộ dữ liệu trong bộ đệm.
+*/
+void SIM_ResetAllBuffer(void)
+{
+  uint8_t i=0,j=0;
+  for(i=0;i<SIM_SIZE_BUFFER;i++)
+  {
+    for(j=0;j<SIM_SIZE_OF_DATA_BUFFER;j++)
+      SimBuffer[i].Buffer[j] = 0;
+    SimBuffer[i].Flags = 0;
+    SimBuffer[i].IndexByteInBuffer =0;
+  }
+}
 
 /*
   * Phát hiện tìm kiếm gói tin mới nhận được và tiến hàng xử lý.
 */
 void SIM_DetectPacket(void)
 {
+  SIM_STATUS _status;
   uint8_t i;
   for(i=0;i<SIM_SIZE_BUFFER;i++)
   {
     if((SimBuffer[i].Flags&SIM_BUF_PK_VALID)!=0)
     {
-        SIM_ProcessNewPacket(&SimBuffer[i]);
-        SIM_ResetBuffer(&SimBuffer[i]);
+      SIM_ProcessNewPacket(&SimBuffer[i]);
+      SIM_ResetBuffer(&SimBuffer[i]);
     }
   }
 } 
@@ -246,7 +265,15 @@ void SIM_SendCommand(char *Command)
 {
     SIM_ClearFlags(SIM_SEND_FLAG_OK);
     SIM_Function.SIM_SendString(Command);
-    SIM_Function.SIM_Sendchar(0x0D);
+    SIM_Function.SIM_SendString("\r\n");
+    //SIM_Function.SIM_Sendchar(0x0D);
+    //SIM_Function.SIM_Sendchar(0x0A);
+}
+
+void SIM_SendData(uint8_t* _data,uint16_t Size)
+{
+  SIM_ClearFlags(SIM_SEND_FLAG_OK);
+  SIM_Function.SIM_SendData(_data,Size);
 }
 
 /*
@@ -255,7 +282,9 @@ void SIM_SendCommand(char *Command)
 
 void SIM_ProcessNewPacket(SIM_BUFFER *_buffer)
 { 
-  
+//  if(NULL!=SearchArrayInArray(_buffer->Buffer,"*ATREADY:",1,_buffer->IndexByteInBuffer))
+//  {
+//  }
 }
 
 
@@ -271,7 +300,10 @@ void SIM_ProcessNewPacket(SIM_BUFFER *_buffer)
 SIM_STATUS SIM_Reset(uint32_t _timeout)
 {
   SIM_SendCommand("AT+CRESET");
-  return (SIM_WaitForRespond("OK\r\n",_timeout));
+  if(_timeout==0)
+    return SIM_OK;
+  else
+    return (SIM_WaitForRespond("OK\r\n",_timeout));
 }
 /**
   * Cấu hình thông báo khi nhận được tin nhắn mới
@@ -282,7 +314,10 @@ SIM_STATUS SIM_Reset(uint32_t _timeout)
 static SIM_STATUS SIM_MessagesIndications(uint32_t _timeout)
 {
 	SIM_SendCommand("AT+CNMI=2,1");
-  return (SIM_WaitForRespond("OK\r\n",_timeout));
+  if(_timeout == 0)
+    return SIM_OK;
+  else
+    return (SIM_WaitForRespond("OK\r\n",_timeout));
 }
 /*
   * Lệnh gọi điện đến 1 số điện thoại
@@ -296,7 +331,10 @@ SIM_STATUS SIM_Call(uint8_t *PhoneNumber,uint32_t _timeout)
   char Cmd[30];
   sprintf(Cmd,"ATD%s;",PhoneNumber);
   SIM_SendCommand(Cmd);
-  return SIM_WaitForRespond("OK\r\n",_timeout);
+  if(_timeout==0)
+    return SIM_OK;
+  else
+    return SIM_WaitForRespond("OK\r\n",_timeout);
 }
 
 /**
@@ -322,15 +360,20 @@ SIM_STATUS SIM_SendMessages(char *PhoneNumber, char *Messages,uint32_t _timeout)
   char Cmd[30];
   sprintf(Cmd,"AT+CMGS=\"%s\"",PhoneNumber);
   SIM_SendCommand(Cmd);
-  _status = SIM_WaitForRespond("OK\r\n",_timeout);
-  if(_status==SIM_OK)
+  if(_timeout==0)
+    return SIM_OK;
+  else
   {
-    SIM_Function.SIM_SendString(Messages);
-    SIM_Function.SIM_Delay(100);
-    SIM_Function.SIM_Sendchar(0x1A);    // Ctr+Z
     _status = SIM_WaitForRespond("OK\r\n",_timeout);
+    if(_status==SIM_OK)
+    {
+      SIM_Function.SIM_SendString(Messages);
+      SIM_Function.SIM_Delay(100);
+      SIM_Function.SIM_Sendchar(0x1A);    // Ctr+Z
+      _status = SIM_WaitForRespond("OK",_timeout);
+    }
+    return _status;
   }
-  return _status;
 }
 
 /**
@@ -345,7 +388,10 @@ SIM_STATUS SIM_ReadMessages(uint8_t IndexInBufferSim,uint32_t _timeout)
 	char Cmd[20];
 	sprintf(Cmd,"AT+CMGR=%u",IndexInBufferSim);
 	SIM_SendCommand(Cmd);
-  return (SIM_WaitForRespond("OK\r\n",_timeout));
+  if(_timeout==0)
+    return SIM_OK;
+  else
+    return (SIM_WaitForRespond("OK\r\n",_timeout));
 }
 /**
   * Xóa tin nhắn nhận được
@@ -359,7 +405,10 @@ SIM_STATUS SIM900_DeleteMessages(uint8_t IndexInBufferSim,uint32_t _timeout)
 	char Cmd[20];
 	sprintf(Cmd,"AT+CMGD=%u",IndexInBufferSim);
 	SIM_SendCommand(Cmd);
-  return (SIM_WaitForRespond("OK\r\n",_timeout));
+  if(_timeout==0)
+    return SIM_OK;
+  else 
+    return (SIM_WaitForRespond("OK\r\n",_timeout));
 }
 
 /**
@@ -416,60 +465,91 @@ uint8_t SIM_GetContent(SIM_BUFFER* _buffer,char* _content)
 }
 
 /**
-  * Kiểm tra chất lượng của tín hiệu
-  * Trong Đó: *rssi:  Giá trị cường độ tín hiệu sim phản hồi
-              *ber (Bit Error): Giá trị bit lỗi sim phản hồi
-              _timeout        : Thời gian chờ phản hồi từ sim
+  * Đọc số điện thoại đang kết nối mạng
+  * Trong Đó: PhoneNumber: Số điện thoại
   * Trả về      :   SIM900_OK          :    Có respond trả về
                     SIM900_TIME_OUT    :    Quá thời gian _time_wait mà không có respond trả về
 **/
-SIM_STATUS SIM_QuerySignalQuality(uint8_t* _rssi,uint8_t* _ber,uint32_t _timeout)
+SIM_STATUS Subscriber_Number(char* PhoneNumber)
 {
-  SIM_STATUS _status;
+  uint8_t Start,Stop,index=0;
+  uint8_t i; 
+  for(i=0;i<SIM_SIZE_BUFFER;i++)
+  {
+    if((SimBuffer[i].Flags&SIM_BUF_PK_VALID)!=0)
+    {
+      SimBuffer[i].Flags = 0;
+      if(SearchArrayInArray(SimBuffer[i].Buffer,"+CNUM:",1,SimBuffer[i].IndexByteInBuffer)!=NULL)
+      {
+        // Tách dữ liệu 
+        Start = SearchByteInArray(',',SimBuffer[i].Buffer,1,SimBuffer[i].IndexByteInBuffer); // Tìm vị trí bắt đầu
+        Stop  = SearchByteInArray(',',SimBuffer[i].Buffer,2,SimBuffer[i].IndexByteInBuffer); // Tìm Vị trí kết thúc
+        if((Start==SimBuffer[i].IndexByteInBuffer)||(Stop==SimBuffer[i].IndexByteInBuffer))
+          return SIM_TIME_OUT;
+        Start+=2;// Bỏ qua các kỹ tự ",""
+        Stop -=1;
+        for(uint8_t index=0;index<Stop-Start;index++)
+        {
+          PhoneNumber[index] = SimBuffer[i].Buffer[index+Start]; // Tách lấy RSSI trong khoảng Start --- Stop
+        }
+        SIM_ResetBuffer(&SimBuffer[i]);
+        return SIM_OK;
+      }
+      SIM_ResetBuffer(&SimBuffer[i]);
+    }
+  }
+  return SIM_TIME_OUT;
+}
+
+/**
+  * Kiểm tra chất lượng của tín hiệu
+  * Trong Đó: *rssi:  Giá trị cường độ tín hiệu sim phản hồi
+              *ber (Bit Error): Giá trị bit lỗi sim phản hồi
+  * Trả về      :   SIM900_OK          :    Có respond trả về
+                    SIM900_TIME_OUT    :    Quá thời gian _time_wait mà không có respond trả về
+**/
+SIM_STATUS SIM_QuerySignalQuality(uint8_t* _rssi,uint8_t* _ber)
+{
   uint8_t __rssi[5],__ber[5];
   uint16_t TimeWait = 0;
   uint8_t Start,Stop,index=0;
-  uint8_t i;  
-
-  SIM_SendCommand("AT+CSQ");
-  _status = SIM_WaitForRespond("OK",_timeout); // Nếu phả hồi OK thì lấy giá trị
-  if(_status==SIM_OK)
+  uint8_t i;
+  
+  for(i=0;i<SIM_SIZE_BUFFER;i++)
   {
-    while((++TimeWait<_timeout))
+    if((SimBuffer[i].Flags&SIM_BUF_PK_VALID)!=0)
     {
-      SIM_Function.SIM_Delay(1);
-      for(i=0;i<SIM_SIZE_BUFFER;i++)
+      SimBuffer[i].Flags = 0;
+      if(SearchArrayInArray(SimBuffer[i].Buffer,"+CSQ:",1,SimBuffer[i].IndexByteInBuffer)!=NULL)
       {
-        if((SimBuffer[i].Flags&SIM_BUF_PK_VALID)!=0)
+        // Tách dữ liệu RSSI
+        Start = SearchByteInArray(':',SimBuffer[i].Buffer,1,SimBuffer[i].IndexByteInBuffer); // Tìm vị trí bắt đầu
+        Stop  = SearchByteInArray(',',SimBuffer[i].Buffer,1,SimBuffer[i].IndexByteInBuffer); // Tìm Vị trí kết thúc
+        if((Start==SimBuffer[i].IndexByteInBuffer)&&(Stop == SimBuffer[i].IndexByteInBuffer))
+          return SIM_TIME_OUT; 
+        Start+=2;// Bỏ qua các kỹ tự ": "
+        for(uint8_t index=0;index<Stop-Start;index++)
         {
-          SimBuffer[i].Flags = 0;
-          if(SearchArrayInArray(SimBuffer[i].Buffer,"+CSQ:",1,SimBuffer[i].IndexByteInBuffer)!=NULL)
-          {
-            // Tách dữ liệu RSSI
-            Start = SearchByteInArray(':',SimBuffer[i].Buffer,1,SimBuffer[i].IndexByteInBuffer); // Tìm vị trí bắt đầu
-            Stop  = SearchByteInArray(',',SimBuffer[i].Buffer,1,SimBuffer[i].IndexByteInBuffer); // Tìm Vị trí kết thúc
-            Start+=2;// Bỏ qua các kỹ tự ": "
-            for(uint8_t index=0;index<Stop-Start;index++)
-            {
-              __rssi[index] = SimBuffer[i].Buffer[index+Start]; // Tách lấy RSSI trong khoảng Start --- Stop
-            }
-            *_rssi = (__rssi[0]-0x30)*10 + (__rssi[1]-0x30);  
-            // Tách dữ liệu BER
-            Start = SearchByteInArray(',',SimBuffer[i].Buffer,1,SimBuffer[i].IndexByteInBuffer); // Tìm vị trí bắt đầu
-            Stop = SimBuffer[i].IndexByteInBuffer;
-            Start+=1;// Bỏ qua các kỹ tự ","
-            for(uint8_t index=0;index<Stop-Start;index++)
-            {
-              __ber[index] = SimBuffer[i].Buffer[index+Start]; // Tách lấy RSSI trong khoảng Start --- Stop
-            }
-            *_ber = (__ber[0]-0x30)*10 + (__ber[1]-0x30);
-          }
+          __rssi[index] = SimBuffer[i].Buffer[index+Start]; // Tách lấy RSSI trong khoảng Start --- Stop
         }
+        *_rssi = (__rssi[0]-0x30)*10 + (__rssi[1]-0x30);  
+        // Tách dữ liệu BER
+        Start = SearchByteInArray(',',SimBuffer[i].Buffer,1,SimBuffer[i].IndexByteInBuffer); // Tìm vị trí bắt đầu
+        Stop = SimBuffer[i].IndexByteInBuffer;
+        Start+=1;// Bỏ qua các kỹ tự ","
+        for(uint8_t index=0;index<Stop-Start;index++)
+        {
+          __ber[index] = SimBuffer[i].Buffer[index+Start]; // Tách lấy RSSI trong khoảng Start --- Stop
+        }
+        *_ber = (__ber[0]-0x30)*10 + (__ber[1]-0x30);
+        
+        SIM_ResetBuffer(&SimBuffer[i]); 
+        return SIM_OK;
       }
+      SIM_ResetBuffer(&SimBuffer[i]);
     }
   }
-
-  return _status;
+  return SIM_TIME_OUT;
 }
 
 /**
@@ -490,7 +570,7 @@ SIM_STATUS SIM_NetworkResistration(uint8_t* _value,uint8_t* _sta_,uint32_t _time
   uint8_t i;  
 
   SIM_SendCommand("AT+CREG?");
-  _status = SIM_WaitForRespond("OK",_timeout); // Nếu phả hồi OK thì lấy giá trị
+  _status = SIM_WaitForRespond("OK\r\n",_timeout); // Nếu phả hồi OK thì lấy giá trị
   if(_status==SIM_OK)
   {
     while((++TimeWait<_timeout))
@@ -531,58 +611,26 @@ SIM_STATUS SIM_NetworkResistration(uint8_t* _value,uint8_t* _sta_,uint32_t _time
 
 /**
   * Tạo môi trường PDP
-  * Trong Đó: _value:  Giá trị đang ký mạng
-              _status : Trạng thái mạng
+  * Trong Đó: _cid:  (PDP Context indentifier) giá trị nằm trong 1 - 16 || 100 - 179
+              _PDP_type : Packet Data Protocol Type 
+                "IP"    : Internet Protocol
+                "PPP"   : Point to Point Protocol
+                "IPV6"  : Internet Protocol Version 6
+                "IPV4V6": Dual PDN Stack
+              _APN      : Access Point Name
               _timeout        : Thời gian chờ phản hồi từ sim
   * Trả về      :   SIM900_OK          :    Có respond trả về
                     SIM900_TIME_OUT    :    Quá thời gian _time_wait mà không có respond trả về
 **/
 
-SIM_STATUS SIM_NetworkResistration(uint8_t* _value,uint8_t* _sta_,uint32_t _timeout)
+SIM_STATUS SIM_DefinePDP(uint8_t _cid,char* _PDP_type,char* _APN,uint32_t _timeout)
 {
   SIM_STATUS _status;
-  uint8_t __value[5],__sta[5];
-  uint16_t TimeWait = 0;
-  uint8_t Start,Stop,index=0;
-  uint8_t i;  
+  char Cmd[20];
 
-  SIM_SendCommand("AT+CREG?");
-  _status = SIM_WaitForRespond("OK",_timeout); // Nếu phả hồi OK thì lấy giá trị
-  if(_status==SIM_OK)
-  {
-    while((++TimeWait<_timeout))
-    {
-      SIM_Function.SIM_Delay(1);
-      for(i=0;i<SIM_SIZE_BUFFER;i++)
-      {
-        if((SimBuffer[i].Flags&SIM_BUF_PK_VALID)!=0)
-        {
-          SimBuffer[i].Flags = 0;
-          if(SearchArrayInArray(SimBuffer[i].Buffer,"+CREG:",1,SimBuffer[i].IndexByteInBuffer)!=NULL)
-          {
-            // Tách dữ liệu RSSI
-            Start = SearchByteInArray(':',SimBuffer[i].Buffer,1,SimBuffer[i].IndexByteInBuffer); // Tìm vị trí bắt đầu
-            Stop  = SearchByteInArray(',',SimBuffer[i].Buffer,1,SimBuffer[i].IndexByteInBuffer); // Tìm Vị trí kết thúc
-            Start+=2;// Bỏ qua các kỹ tự ": "
-            for(uint8_t index=0;index<Stop-Start;index++)
-            {
-              __value[index] = SimBuffer[i].Buffer[index+Start]; // Tách lấy RSSI trong khoảng Start --- Stop
-            }
-            *_value = __value[0]-0x30;  
-            // Tách dữ liệu BER
-            Start = SearchByteInArray(',',SimBuffer[i].Buffer,1,SimBuffer[i].IndexByteInBuffer); // Tìm vị trí bắt đầu
-            Stop = SimBuffer[i].IndexByteInBuffer;
-            Start+=1;// Bỏ qua các kỹ tự ","
-            for(uint8_t index=0;index<Stop-Start;index++)
-            {
-              __sta[index] = SimBuffer[i].Buffer[index+Start]; // Tách lấy RSSI trong khoảng Start --- Stop
-            }
-            *_sta_ = __sta[0]-0x30;
-          }
-        }
-      }
-    }
-  }
+  sprintf(Cmd,"AT+CGDCONT=%u,\"%s\",\"%s\"",_cid,_PDP_type,_APN);
+  SIM_SendCommand(Cmd);
+  _status = SIM_WaitForRespond("OK\r\n",_timeout); // Nếu phả hồi OK thì lấy giá trị
   return _status;
 }
 
@@ -621,7 +669,87 @@ SIM_STATUS SIM_InitBasic(uint32_t _timeout)
 /*vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv
   ========================== Cấu Hình SIM Chạy TCP IP =============================
   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^*/
-SIM_STATUS SIM_NetworkEnvironment (void)
+/**
+  * Bắt Đầu Giao Thức TCP IP
+  * _timeout        : Thời gian chờ phản hồi từ sim
+  * Trả về      :   SIM900_OK          :    Có respond trả về
+                    SIM900_TIME_OUT    :    Quá thời gian _time_wait mà không có respond trả về
+**/
+SIM_STATUS TCPIP_StartService (uint32_t _timeout)
 {
-  
+  SIM_SendCommand("AT+NETOPEN");
+  return (SIM_WaitForRespond("OK\r\n",_timeout));  
+}
+/**
+  * Kết Thúc Gia Thức TCP IP
+  * _timeout        : Thời gian chờ phản hồi từ sim
+  * Trả về      :   SIM900_OK          :    Có respond trả về
+                    SIM900_TIME_OUT    :    Quá thời gian _time_wait mà không có respond trả về
+**/
+SIM_STATUS TCPIP_StopService (uint32_t _timeout)
+{
+  SIM_SendCommand("AT+NETCLOSE");
+  return (SIM_WaitForRespond("OK\r\n",_timeout));  
+}
+/**
+  * TCPIP Cấu hình Socket ở chế độ Client
+  * Trong Đó: _link_num:  Xác định 1 kết nối giá trị nằm trong 0-9
+              _type : Xác định kiểu giao thức truyền
+                "TCP"   : Transmission Control Protocol
+                "UDP"   : User Datagram Protocol
+              _serverIP : Địa chỉ Server : AAA.BBB.CCC.DDD
+              _serverPort : Cổng của Server giá trị nằm trong  0 - 65535
+              _timeout        : Thời gian chờ phản hồi từ sim
+  * Trả về      :   SIM900_OK          :    Có respond trả về
+                    SIM900_TIME_OUT    :    Quá thời gian _time_wait mà không có respond trả về
+**/
+
+SIM_STATUS TCP_SetupClientSocket(uint8_t _link_num,char* _type,char* _serverIP,uint16_t _serverPort,uint32_t _timeout)
+{
+  SIM_STATUS _status;
+  char Cmd[20];
+  sprintf(Cmd,"AT+CIPOPEN=%u,\"%s\",\"%s\",%u",_link_num,_type,_serverIP,_serverPort);
+  SIM_SendCommand(Cmd);
+  _status = SIM_WaitForRespond("OK\r\n",_timeout); // Nếu phả hồi OK thì lấy giá trị
+  return _status;
+}
+/**
+  * TCPIP Lụa chọn chế độ hoạt động
+  * Trong Đó: _mode:  Chế độ ứng dụng
+                 0 :  Non Transparent Mode
+                 1 :  Transparent Mode    
+              _timeout        : Thời gian chờ phản hồi từ sim
+  * Trả về      :   SIM900_OK          :    Có respond trả về
+                    SIM900_TIME_OUT    :    Quá thời gian _time_wait mà không có respond trả về
+**/
+
+SIM_STATUS TCP_SelectionApplicationMode(uint8_t _mode,uint32_t _timeout)
+{
+  SIM_STATUS _status;
+  char Cmd[20];
+
+  sprintf(Cmd,"AT+CIPMODE=%u",_mode);
+  SIM_SendCommand(Cmd);
+  _status = SIM_WaitForRespond("OK\r\n",_timeout); // Nếu phả hồi OK thì lấy giá trị
+  return _status;
+}
+/**
+  * TCPIP Gửi Dữ Liệu Tới Server
+  * Trong Đó: link_num: Số 0 - 9
+              *Data:  Con chỏ dữ liệu
+              _leng: Độ dài dữ liệu   
+              _timeout        : Thời gian chờ phản hồi từ sim
+  * Trả về      :   SIM900_OK          :    Có respond trả về
+                    SIM900_TIME_OUT    :    Quá thời gian _time_wait mà không có respond trả về
+**/
+
+SIM_STATUS TCP_SendDataToServer(uint8_t link_num,uint8_t* Data,uint16_t _leng,uint32_t _timeout)
+{
+  SIM_STATUS _status;
+  char Cmd[20];
+
+  sprintf(Cmd,"AT+CIPSEND=%u,%u",link_num,_leng);
+  SIM_SendCommand(Cmd);
+  _status = SIM_WaitForRespond("OK\r\n",_timeout); // Nếu phả hồi OK thì lấy giá trị
+  return _status;
 }
